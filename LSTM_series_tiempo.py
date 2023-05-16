@@ -203,3 +203,114 @@ plt.show()
 f = metrics_custom(test['High'], predicted_prices)
 print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
 
+# --------------------- Agregado de variables a conjunto inicial ---------------------
+
+df_meli_2 = df_meli.copy()
+
+# Completamos con dias faltantes y los llenamos con el valor del dia anterior
+df_meli_2
+df_meli_2 = df_meli_2.asfreq('D')
+df_meli_2.fillna(method='ffill', inplace=True)
+
+# Creamos las columnas de diferencias con periodos anteriores 1,2,3,4 y 5 días
+
+df_meli_2['diff_close'] = df_meli_2['Close'].diff()
+df_meli_2['diff_close_p1'] = df_meli_2["diff_close"].shift(1)
+df_meli_2['diff_close_p2'] = df_meli_2["diff_close"].shift(2)
+df_meli_2['diff_close_p3'] = df_meli_2["diff_close"].shift(3)
+df_meli_2['diff_close_p4'] = df_meli_2["diff_close"].shift(4)
+df_meli_2 = df_meli_2.fillna(0)
+
+# Creamos medias móviles o rolling windows para utilizarlas en el análisis
+
+df_meli_2['rolling_windows_mean'] = df_meli_2['diff_close_p1'].rolling(window=2).mean()
+df_meli_2['rolling_windows_mean7'] = df_meli_2['diff_close_p1'].rolling(window=7).mean()
+df_meli_2['rolling_windows_mean14'] = df_meli_2['diff_close_p1'].rolling(window=14).mean()
+df_meli_2['rolling_windows_mean21'] = df_meli_2['diff_close_p1'].rolling(window=21).mean()
+
+# -------------- INICIO MODELADO  ------------
+
+# Separamos el conjunto
+
+train = df_meli_2.loc[:'2022-12-31']
+test = df_meli_2.loc['2023-01-01':]
+
+# Transformaciones
+
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(train['High'].values.reshape(-1,1))
+
+# Spliteo de conjuntos test y train
+
+prediction_days = 60
+
+x_train = []
+y_train = []
+
+for x in range(prediction_days, len(scaled_data)):
+    x_train.append(scaled_data[x - prediction_days:x, 0])
+    y_train.append(scaled_data[x, 0])
+
+x_train, y_train = np.array(x_train), np.array(y_train)
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+
+# -------------- CREACIÓN DEL MODELO ----------------
+# Usamos el mismo que el anterior
+
+# -------------- ENTRENAMIENTO -----------------
+
+checkpointer = ModelCheckpoint(filepath = 'weights_best.hdf5',
+                               verbose = 2,
+                               save_best_only = True)
+
+model.fit(x_train,
+          y_train,
+          epochs=25,
+          batch_size = 32,
+          callbacks = [checkpointer])
+
+# -------------- PREDICCIÓN -------------------
+
+inputs = df_meli_2[len(df_meli_2) - len(test) - prediction_days:]['High']
+
+inputs_trasnform = scaler.transform(inputs.values.reshape(-1,1))
+
+x_test = []
+for x in range(prediction_days, len(inputs_trasnform)):
+    x_test.append(inputs_trasnform[x-prediction_days:x, 0])
+
+x_test = np.array(x_test)
+x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1] ,1))
+
+# Se hacen las predicciones
+
+predicted_prices = model.predict(x_test)
+predicted_prices = scaler.inverse_transform(predicted_prices)
+
+# Se integran en un dataframe de test combinando el valor real con el valor de la predicción.
+
+test_df = pd.DataFrame(test['High'])
+test_df['type'] = 'Real'
+predict_df = pd.DataFrame(pd.Series(predicted_prices.reshape(-1,), index=test_df.index, name='High'))
+predict_df['type'] = 'Predict'
+
+# Graficamos
+from matplotlib import rcParams
+rcParams['figure.figsize'] = 15,6
+all = pd.concat([test_df,predict_df])
+sns.lineplot(x='Date', y='High', hue='type', data=all.reset_index()).set_title('Comparison between real data and predict data');
+plt.show()
+
+# Métricas de evaulación
+
+f = metrics_custom(test['High'], predicted_prices)
+print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
+
+# RESULTADO METRICAS
+#            Metrics
+# MAPE       0.037564
+# MAE      299.328733
+# MSE   147353.026425
+# r2         0.917217
+
+# No guarde las métricas del resultado anterior, pero gráficamente, los valores se aproximan en mayor medida.
