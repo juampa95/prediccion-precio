@@ -204,3 +204,8 @@ plot.legend.location = "top_right"
 # Le agregamos un titulo a las leyendas
 plot.legend.title = "Comparasion"
 show(plot)
+
+# El resultado es bastante malo. Ahora vamos a probar con Deep Learning con LSTM, que ees una red neuronal recurrente,
+# las siglas significan "Long Short-Term Memory" (LSTM) en el archivo LSTM_series_tiempo
+
+
