@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import rcParams
 import seaborn as sns
 import yfinance as yf
 from datetime import datetime
@@ -10,6 +11,8 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, LSTM
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from sklearn.metrics import mean_absolute_percentage_error,mean_squared_error, r2_score, mean_absolute_error
+import ta
+from ta import momentum,volatility,trend
 
 
 # functions
@@ -314,3 +317,120 @@ print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
 # r2         0.917217
 
 # No guarde las métricas del resultado anterior, pero gráficamente, los valores se aproximan en mayor medida.
+
+# ----------------- PRUEBA BIBLIOTECA TA (Technical analysis) -----------------
+
+# https://technical-analysis-library-in-python.readthedocs.io/en/latest/ta.html
+
+# Según chatGPT el top 10 de indicadores que debería usar son los siguientes
+
+# Media Móvil Simple (SMA): ta.SMA()
+# Media Móvil Exponencial (EMA): ta.EMA()
+# Bandas de Bollinger (BB): ta.BBANDS()
+# Índice de Fuerza Relativa (RSI): ta.RSI()
+# Oscilador Estocástico (STOCH): ta.STOCH()
+# MACD (Moving Average Convergence Divergence): ta.MACD()
+# ATR (Average True Range): ta.ATR()
+# ADX (Average Directional Index): ta.ADX()
+# CCI (Commodity Channel Index): ta.CCI()
+# ROC (Rate of Change): ta.ROC()
+
+df_meli_3 = df_meli.copy()
+
+df_meli_3['SMA'] = ta.trend.sma_indicator(df_meli_3['Close'], window=14)
+df_meli_3['EMA'] = ta.trend.ema_indicator(df_meli_3['Close'], window=14)
+df_meli_3['BB_upper'], df_meli_3['BB_middle'], df_meli_3['BB_lower'] = ta.volatility.bollinger_mavg(df_meli_3['Close']), ta.volatility.bollinger_mavg(df_meli_3['Close']), ta.volatility.bollinger_mavg(df_meli_3['Close'])
+df_meli_3['RSI'] = ta.momentum.rsi(df_meli_3['Close'], window=14)
+df_meli_3['stoch_k'], df_meli_3['stoch_d'] = ta.momentum.stoch(df_meli_3['High'], df_meli_3['Low'], df_meli_3['Close'], window=5, smooth_window=3), ta.momentum.stoch(df_meli_3['High'], df_meli_3['Low'], df_meli_3['Close'], window=5, smooth_window=3)
+df_meli_3['MACD'] = ta.trend.macd_diff(df_meli_3['Close'])
+df_meli_3['ATR'] = ta.volatility.average_true_range(df_meli_3['High'], df_meli_3['Low'], df_meli_3['Close'], window=14)
+df_meli_3['ADX'] = ta.trend.adx(df_meli_3['High'], df_meli_3['Low'], df_meli_3['Close'], window=14)
+df_meli_3['CCI'] = ta.trend.cci(df_meli_3['High'], df_meli_3['Low'], df_meli_3['Close'], window=14)
+df_meli_3['ROC'] = ta.momentum.roc(df_meli_3['Close'], window=10)
+df_meli_3 = df_meli_3.fillna(0)
+
+# -------------- INICIO MODELADO  ------------
+
+# Separamos el conjunto
+
+train = df_meli_3.loc[:'2022-12-31']
+test = df_meli_3.loc['2023-01-01':]
+
+# Transformaciones
+
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(train['High'].values.reshape(-1,1))
+
+# Spliteo de conjuntos test y train
+
+prediction_days = 60
+
+x_train = []
+y_train = []
+
+for x in range(prediction_days, len(scaled_data)):
+    x_train.append(scaled_data[x - prediction_days:x, 0])
+    y_train.append(scaled_data[x, 0])
+
+x_train, y_train = np.array(x_train), np.array(y_train)
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+
+# -------------- CREACIÓN DEL MODELO ----------------
+# Usamos el mismo que el anterior
+
+# -------------- ENTRENAMIENTO -----------------
+
+checkpointer = ModelCheckpoint(filepath = 'weights_best.hdf5',
+                               verbose = 2,
+                               save_best_only = True)
+
+model.fit(x_train,
+          y_train,
+          epochs=25,
+          batch_size = 32,
+          callbacks = [checkpointer])
+
+# -------------- PREDICCIÓN -------------------
+
+inputs = df_meli_3[len(df_meli_3) - len(test) - prediction_days:]['High']
+
+inputs_trasnform = scaler.transform(inputs.values.reshape(-1,1))
+
+x_test = []
+for x in range(prediction_days, len(inputs_trasnform)):
+    x_test.append(inputs_trasnform[x-prediction_days:x, 0])
+
+x_test = np.array(x_test)
+x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1] ,1))
+
+# Se hacen las predicciones
+
+predicted_prices = model.predict(x_test)
+predicted_prices = scaler.inverse_transform(predicted_prices)
+
+# Se integran en un dataframe de test combinando el valor real con el valor de la predicción.
+
+test_df = pd.DataFrame(test['High'])
+test_df['type'] = 'Real'
+predict_df = pd.DataFrame(pd.Series(predicted_prices.reshape(-1,), index=test_df.index, name='High'))
+predict_df['type'] = 'Predict'
+
+# Graficamos
+from matplotlib import rcParams
+rcParams['figure.figsize'] = 15,6
+all = pd.concat([test_df,predict_df])
+sns.lineplot(x='Date', y='High', hue='type', data=all.reset_index()).set_title('Comparison between real data and predict data 3');
+plt.show()
+
+# Métricas de evaulación
+
+f = metrics_custom(test['High'], predicted_prices)
+print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
+
+# Los resultados fueron muy malos.
+# MAPE  1.287206e-01
+# MAE   1.044339e+03
+# MSE   1.298006e+06
+# r2    3.040300e-01
+# Esto se puede apreciar visualemnte en el gráfico N°3. Si bien parece que el modelo siguió correctamente la
+# tendencia, lo hizo muy por debajo de los valores reales.
