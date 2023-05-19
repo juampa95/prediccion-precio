@@ -13,6 +13,8 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from sklearn.metrics import mean_absolute_percentage_error,mean_squared_error, r2_score, mean_absolute_error
 import ta
 from ta import momentum,volatility,trend
+from matplotlib import rcParams
+rcParams['figure.figsize'] = 15,6
 
 
 # functions
@@ -206,6 +208,11 @@ plt.show()
 f = metrics_custom(test['High'], predicted_prices)
 print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
 
+# Métricas de evaluación
+# MAPE  1.625134e-01
+# MAE   1.305200e+03
+# MSE   1.935482e+06
+# r2   -3.777418e-02
 # --------------------- Agregado de variables a conjunto inicial ---------------------
 
 df_meli_2 = df_meli.copy()
@@ -241,7 +248,7 @@ test = df_meli_2.loc['2023-01-01':]
 # Transformaciones
 
 scaler = MinMaxScaler(feature_range=(0,1))
-scaled_data = scaler.fit_transform(train['High'].values.reshape(-1,1))
+scaled_data = scaler.fit_transform(train['Close'].values.reshape(-1,1))
 
 # Spliteo de conjuntos test y train
 
@@ -274,7 +281,7 @@ model.fit(x_train,
 
 # -------------- PREDICCIÓN -------------------
 
-inputs = df_meli_2[len(df_meli_2) - len(test) - prediction_days:]['High']
+inputs = df_meli_2[len(df_meli_2) - len(test) - prediction_days:]['Close']
 
 inputs_trasnform = scaler.transform(inputs.values.reshape(-1,1))
 
@@ -292,21 +299,20 @@ predicted_prices = scaler.inverse_transform(predicted_prices)
 
 # Se integran en un dataframe de test combinando el valor real con el valor de la predicción.
 
-test_df = pd.DataFrame(test['High'])
+test_df = pd.DataFrame(test['Close'])
 test_df['type'] = 'Real'
-predict_df = pd.DataFrame(pd.Series(predicted_prices.reshape(-1,), index=test_df.index, name='High'))
+predict_df = pd.DataFrame(pd.Series(predicted_prices.reshape(-1,), index=test_df.index, name='Close'))
 predict_df['type'] = 'Predict'
 
 # Graficamos
-from matplotlib import rcParams
-rcParams['figure.figsize'] = 15,6
+
 all = pd.concat([test_df,predict_df])
-sns.lineplot(x='Date', y='High', hue='type', data=all.reset_index()).set_title('Comparison between real data and predict data');
+sns.lineplot(x='Date', y='Close', hue='type', data=all.reset_index()).set_title('Comparison between real data and predict data');
 plt.show()
 
 # Métricas de evaulación
 
-f = metrics_custom(test['High'], predicted_prices)
+f = metrics_custom(test['Close'], predicted_prices)
 print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
 
 # RESULTADO METRICAS
@@ -359,7 +365,7 @@ test = df_meli_3.loc['2023-01-01':]
 # Transformaciones
 
 scaler = MinMaxScaler(feature_range=(0,1))
-scaled_data = scaler.fit_transform(train['High'].values.reshape(-1,1))
+scaled_data = scaler.fit_transform(train['Close'].values.reshape(-1,1))
 
 # Spliteo de conjuntos test y train
 
@@ -392,7 +398,7 @@ model.fit(x_train,
 
 # -------------- PREDICCIÓN -------------------
 
-inputs = df_meli_3[len(df_meli_3) - len(test) - prediction_days:]['High']
+inputs = df_meli_3[len(df_meli_3) - len(test) - prediction_days:]['Close']
 
 inputs_trasnform = scaler.transform(inputs.values.reshape(-1,1))
 
@@ -410,21 +416,21 @@ predicted_prices = scaler.inverse_transform(predicted_prices)
 
 # Se integran en un dataframe de test combinando el valor real con el valor de la predicción.
 
-test_df = pd.DataFrame(test['High'])
+test_df = pd.DataFrame(test['Close'])
 test_df['type'] = 'Real'
-predict_df = pd.DataFrame(pd.Series(predicted_prices.reshape(-1,), index=test_df.index, name='High'))
+predict_df = pd.DataFrame(pd.Series(predicted_prices.reshape(-1,), index=test_df.index, name='Close'))
 predict_df['type'] = 'Predict'
 
 # Graficamos
 from matplotlib import rcParams
 rcParams['figure.figsize'] = 15,6
 all = pd.concat([test_df,predict_df])
-sns.lineplot(x='Date', y='High', hue='type', data=all.reset_index()).set_title('Comparison between real data and predict data 3');
+sns.lineplot(x='Date', y='Close', hue='type', data=all.reset_index()).set_title('Comparison between real data and predict data 3');
 plt.show()
 
 # Métricas de evaulación
 
-f = metrics_custom(test['High'], predicted_prices)
+f = metrics_custom(test['Close'], predicted_prices)
 print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
 
 # Los resultados fueron muy malos.
