@@ -88,7 +88,7 @@ for x in range(prediction_days, len(scaled_train_data)):
     y_train.append(scaled_train_data[x, train.columns.get_loc('Close')])  # Índice de la columna 'Close' en selected_columns
 
 x_train, y_train = np.array(x_train), np.array(y_train)
-
+y_train = y_train.reshape(-1, 1)
 # -------------- CREACIÓN DEL MODELO ----------------
 model = Sequential()
 model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])))
@@ -114,12 +114,29 @@ x_test = []
 y_test = []
 
 for x in range(prediction_days, len(scaled_test_data)):
-    x_test.append(scaled_test_data[x - prediction_days:x])
+    x_test.append(scaled_test_data[x - prediction_days:x, :])
+    y_test.append(scaled_test_data[x, test.columns.get_loc('Close')])
+
+
+x_test, y_test = np.array(x_test), np.array(y_test)
+y_test = y_test.reshape(-1, 1)
+# Hacer predicciones
+
+# Preparar los datos de prueba en secuencias
+x_test = []
+y_test = []
+
+for x in range(prediction_days, len(scaled_test_data)):
+    x_test.append(scaled_test_data[x - prediction_days:x, :])
     y_test.append(scaled_test_data[x, test.columns.get_loc('Close')])
 
 x_test, y_test = np.array(x_test), np.array(y_test)
 
-# Hacer predicciones
+# Ajuste de dimensiones de y_test
+y_test = y_test.reshape(-1, 1)
+
+
+
 predicted_prices = model.predict(x_test)
 
 # Invertir la escala de las predicciones
@@ -128,3 +145,68 @@ predicted_prices = scaler.inverse_transform(predicted_prices)
 len(predicted_prices[0])
 
 df_meli
+
+# --------------- Prueba nueva ----------------
+
+# Normalizar los datos
+scaler = MinMaxScaler()
+df_meli_train_normalized = scaler.fit_transform(train)
+df_meli_test_normalized = scaler.transform(test)
+
+# Crear secuencias de 60 días para la entrada y las etiquetas correspondientes en el conjunto de entrenamiento
+sequence_length = 60
+X_train = []
+y_train = []
+for i in range(sequence_length, len(df_meli_train_normalized)):
+    X_train.append(df_meli_train_normalized[i - sequence_length:i])
+    y_train.append(df_meli_train_normalized[i][3])  # El valor de cierre (Close) es el índice 3
+
+# Convertir a matrices numpy
+X_train = np.array(X_train)
+y_train = np.array(y_train)
+
+# Crear secuencias de 60 días para la entrada y las etiquetas correspondientes en el conjunto de prueba
+X_test = []
+y_test = []
+for i in range(sequence_length, len(df_meli_test_normalized)):
+    X_test.append(df_meli_test_normalized[i - sequence_length:i])
+    y_test.append(df_meli_test_normalized[i][3])  # El valor de cierre (Close) es el índice 3
+
+# Convertir a matrices numpy
+X_test = np.array(X_test)
+y_test = np.array(y_test)
+
+# -------------- CREACIÓN DEL MODELO ----------------
+model = Sequential()
+model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], x_train.shape[2])))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50, return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50))
+model.add(Dropout(0.2))
+model.add(Dense(units=1))
+model.compile(optimizer='adam', loss='mean_squared_error')
+# -------------- ENTRENAMIENTO -----------------
+checkpointer = ModelCheckpoint(filepath='weights_best.hdf5', verbose=2, save_best_only=True)
+
+model.fit(x_train, y_train, epochs=25, batch_size=32, callbacks=[checkpointer])
+
+# -------------- PREDICCIONES -----------------
+# Evaluar el modelo
+train_loss = model.evaluate(X_train, y_train, verbose=0)
+test_loss = model.evaluate(X_test, y_test, verbose=0)
+
+# Hacer predicciones
+predictions = model.predict(X_test)
+
+df = pd.DataFrame(df_meli_test_normalized[60:])
+df[3] = predictions
+
+df_pred = pd.DataFrame(scaler.inverse_transform(df))
+
+df_pred
+
+df_original = pd.DataFrame(df_meli_test_normalized[60:])
+
+f = metrics_custom(df_original[3], df_pred[3])
+print(pd.DataFrame(f.values(), index=f.keys(), columns=['Metrics']))
